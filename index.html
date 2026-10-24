@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Trading Journal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header class="topbar">
+    <h1>Trading Journal</h1>
+    <div class="topbar-actions">
+      <button id="themeToggle" class="btn ghost" type="button">Dark mode</button>
+      <button id="newBtn" class="btn primary" type="button">New entry</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="stats" aria-label="Summary">
+      <div class="stat">
+        <span class="stat-label">Trades</span>
+        <strong id="statTrades" class="stat-value">0</strong>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Win rate</span>
+        <strong id="statWinRate" class="stat-value">—</strong>
+      </div>
+      <div class="stat">
+        <span class="stat-label">Net result</span>
+        <strong id="statNet" class="stat-value">$0.00</strong>
+      </div>
+    </section>
+
+    <section class="panel" aria-label="Balance">
+      <div class="balance-top">
+        <div>
+          <span class="stat-label">Balance</span>
+          <strong id="balanceValue" class="balance-value">$0</strong>
+        </div>
+        <div class="seg" role="radiogroup" aria-label="Display currency">
+          <label><input type="radio" name="display" value="USD" checked><span>USD</span></label>
+          <label><input type="radio" name="display" value="USC"><span>USC</span></label>
+        </div>
+      </div>
+
+      <div class="field start-field">
+        <label for="startBalance">Starting balance</label>
+        <input id="startBalance" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00">
+      </div>
+
+      <nav class="periods" aria-label="Period">
+        <button type="button" class="chip" data-period="week">Week</button>
+        <button type="button" class="chip" data-period="month">Month</button>
+        <button type="button" class="chip" data-period="lastmonth">Last month</button>
+        <button type="button" class="chip" data-period="6m">6 months</button>
+        <button type="button" class="chip" data-period="1y">1 year</button>
+      </nav>
+
+      <p id="rangeLabel" class="range-label"></p>
+      <p id="chartReadout" class="readout" aria-live="polite"></p>
+      <svg id="chart" class="chart" viewBox="0 0 600 240" role="img" aria-label="Balance over the selected period"></svg>
+
+      <div class="period-summary">
+        <div class="tile profit">
+          <span class="stat-label">Profit</span>
+          <strong id="sumProfit">$0</strong>
+          <span id="sumProfitCount" class="tile-sub">0 trades</span>
+        </div>
+        <div class="tile loss">
+          <span class="stat-label">Loss</span>
+          <strong id="sumLoss">$0</strong>
+          <span id="sumLossCount" class="tile-sub">0 trades</span>
+        </div>
+        <div class="tile be">
+          <span class="stat-label">Break even</span>
+          <strong id="sumBe">0</strong>
+          <span id="sumBeCount" class="tile-sub">trades</span>
+        </div>
+      </div>
+    </section>
+
+    <nav class="filters" aria-label="Filter trades">
+      <button type="button" class="chip active" data-filter="all">All</button>
+      <button type="button" class="chip" data-filter="profit">Profit</button>
+      <button type="button" class="chip" data-filter="loss">Loss</button>
+      <button type="button" class="chip" data-filter="be">Break even</button>
+    </nav>
+
+    <section id="feed" class="feed" aria-live="polite"></section>
+
+    <div id="empty" class="empty" hidden>
+      <h2 id="emptyTitle">No trades yet</h2>
+      <p id="emptyText">Select New entry to log your first trade.</p>
+    </div>
+  </main>
+
+  <!-- Entry form -->
+  <dialog id="entryDialog" aria-labelledby="dialogTitle">
+    <form id="entryForm" novalidate>
+      <h2 id="dialogTitle">New entry</h2>
+
+      <div class="field">
+        <label for="pair">Pair</label>
+        <input id="pair" name="pair" type="text" placeholder="XAUUSD" maxlength="20" autocomplete="off" required>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Direction</span>
+        <div class="seg">
+          <label><input type="radio" name="side" value="buy" checked><span>Buy</span></label>
+          <label><input type="radio" name="side" value="sell"><span>Sell</span></label>
+        </div>
+      </div>
+
+      <div class="field">
+        <span class="field-label">Result</span>
+        <div class="seg result">
+          <label><input type="radio" name="result" value="profit" checked><span>Profit</span></label>
+          <label><input type="radio" name="result" value="loss"><span>Loss</span></label>
+          <label><input type="radio" name="result" value="be"><span>Break even</span></label>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="field grow">
+          <label for="amount">Amount</label>
+          <input id="amount" name="amount" type="number" inputmode="decimal" min="0.01" step="0.01" placeholder="0.00">
+        </div>
+        <div class="field">
+          <span class="field-label">Currency</span>
+          <div class="seg">
+            <label><input type="radio" name="currency" value="USD" checked><span>USD</span></label>
+            <label><input type="radio" name="currency" value="USC"><span>USC</span></label>
+          </div>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="date">Date</label>
+        <input id="date" name="date" type="date">
+      </div>
+
+      <div class="field">
+        <span class="field-label">Screenshot</span>
+        <input id="shot" type="file" accept="image/*" hidden>
+        <div class="shot-picker">
+          <button id="shotBtn" class="btn ghost" type="button">Choose image</button>
+          <button id="shotRemove" class="btn ghost" type="button" hidden>Remove</button>
+        </div>
+        <img id="shotPreview" class="shot-preview" alt="Screenshot preview" hidden>
+      </div>
+
+      <p id="formError" class="form-error" role="alert" hidden></p>
+
+      <div class="dialog-actions">
+        <button id="cancelBtn" class="btn ghost" type="button">Cancel</button>
+        <button id="saveBtn" class="btn primary" type="submit">Save entry</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Trade details (big view) -->
+  <dialog id="detail" class="detail" aria-label="Trade details">
+    <div id="detailBody"></div>
+  </dialog>
+
+  <script src="script.js"></script>
+</body>
+</html>
