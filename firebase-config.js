@@ -13,8 +13,8 @@ export const firebaseConfig = {
 
 // Cloudinary console -> Settings -> Upload -> Upload presets (mode: Unsigned)
 export const cloudinary = {
-  cloudName: "YOUR_CLOUD_NAME",
-  uploadPreset: "YOUR_UNSIGNED_PRESET",
+  cloudName: "djqw6dmgr",
+  uploadPreset: "Journal",
   folder: "trading-journal"
 };
 
