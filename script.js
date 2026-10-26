@@ -166,6 +166,7 @@
     netEl.className = 'stat-value' + (net > 0 ? ' profit' : net < 0 ? ' loss' : '');
 
     renderBalance();
+    renderCalendar();
   }
 
   function render() {
@@ -188,15 +189,8 @@
     renderStats();
   }
 
-  /* ---------- Balance & chart ---------- */
-  const SVGNS = 'http://www.w3.org/2000/svg';
-  const chart = $('#chart');
-  const readout = $('#chartReadout');
+  /* ---------- Balance ---------- */
   const startInput = $('#startBalance');
-  let chartPoints = [];
-  let chartGeo = null;
-  let markerLine = null;
-  let markerDot = null;
 
   const pad2 = (n) => String(n).padStart(2, '0');
   const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
@@ -228,69 +222,6 @@
     }
   }
 
-  const svgEl = (tag, attrs) => {
-    const node = document.createElementNS(SVGNS, tag);
-    for (const k in attrs) node.setAttribute(k, attrs[k]);
-    return node;
-  };
-
-  function setReadout(i) {
-    if (i === null) {
-      const first = chartPoints[0].value;
-      const last = chartPoints[chartPoints.length - 1].value;
-      readout.textContent = `${money(first)} \u2192 ${money(last)}  (${money(last - first, true)})`;
-      return;
-    }
-    const p = chartPoints[i];
-    readout.textContent = `${i === 0 ? 'Start of period' : longDate(p.date)}: ${money(p.value)}`;
-  }
-
-  function drawChart(points) {
-    chartPoints = points;
-    const W = 600, H = 240, padX = 10, padT = 14, padB = 26;
-    const vals = points.map((p) => p.value);
-    let min = Math.min(...vals);
-    let max = Math.max(...vals);
-    if (min === max) {
-      const gap = Math.max(1, Math.abs(max) * 0.05);
-      min -= gap; max += gap;
-    }
-    const span = max - min;
-    min -= span * 0.08; max += span * 0.08;
-
-    const n = points.length;
-    const x = (i) => padX + (i / (n - 1)) * (W - 2 * padX);
-    const y = (v) => padT + (1 - (v - min) / (max - min)) * (H - padT - padB);
-    chartGeo = { W, H, padX, padT, padB, n, x, y };
-
-    chart.setAttribute('class', 'chart ' + (vals[n - 1] >= vals[0] ? 'up' : 'down'));
-    chart.replaceChildren();
-
-    for (let i = 0; i < 4; i++) {
-      const gy = padT + i * ((H - padT - padB) / 3);
-      chart.append(svgEl('line', { x1: padX, x2: W - padX, y1: gy, y2: gy, class: 'grid' }));
-    }
-
-    const line = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)} ${y(p.value).toFixed(1)}`).join(' ');
-    chart.append(svgEl('path', {
-      d: `${line} L${x(n - 1).toFixed(1)} ${H - padB} L${x(0).toFixed(1)} ${H - padB} Z`,
-      class: 'area'
-    }));
-    chart.append(svgEl('path', { d: line, class: 'line' }));
-
-    const left = svgEl('text', { x: padX, y: H - 7, class: 'axis' });
-    left.textContent = shortDate(points[0].date);
-    const right = svgEl('text', { x: W - padX, y: H - 7, class: 'axis', 'text-anchor': 'end' });
-    right.textContent = shortDate(points[n - 1].date);
-    chart.append(left, right);
-
-    markerLine = svgEl('line', { class: 'marker-line', y1: padT, y2: H - padB, visibility: 'hidden' });
-    markerDot = svgEl('circle', { class: 'marker-dot', r: 5, visibility: 'hidden' });
-    chart.append(markerLine, markerDot);
-
-    setReadout(null);
-  }
-
   function renderBalance() {
     const totalNet = entries.reduce((s, e) => s + toUSD(e), 0);
     $('#balanceValue').textContent = money(settings.startUSD + totalNet);
@@ -300,27 +231,13 @@
     const endStr = ymd(end);
     $('#rangeLabel').textContent = `${longDate(start)} \u2013 ${longDate(end)}`;
 
-    // Opening balance = starting balance + every trade before the period.
-    let bal = settings.startUSD;
-    const byDay = {};
-    const inRange = [];
+    const sum = { profit: { n: 0, usd: 0 }, loss: { n: 0, usd: 0 }, be: { n: 0, usd: 0 } };
     entries.forEach((e) => {
-      if (e.date < startStr) bal += toUSD(e);
-      else if (e.date <= endStr) {
-        byDay[e.date] = (byDay[e.date] || 0) + toUSD(e);
-        inRange.push(e);
+      if (e.date >= startStr && e.date <= endStr) {
+        sum[e.result].n++;
+        sum[e.result].usd += toUSD(e);
       }
     });
-
-    const points = [{ date: start, value: bal }];
-    for (let d = new Date(start); ymd(d) <= endStr; d = addDays(d, 1)) {
-      bal += byDay[ymd(d)] || 0;
-      points.push({ date: new Date(d), value: bal });
-    }
-    drawChart(points);
-
-    const sum = { profit: { n: 0, usd: 0 }, loss: { n: 0, usd: 0 }, be: { n: 0, usd: 0 } };
-    inRange.forEach((e) => { sum[e.result].n++; sum[e.result].usd += toUSD(e); });
     $('#sumProfit').textContent = money(sum.profit.usd, true);
     $('#sumProfitCount').textContent = countLabel(sum.profit.n);
     $('#sumLoss').textContent = money(sum.loss.usd, true);
@@ -329,9 +246,107 @@
     $('#sumBeCount').textContent = sum.be.n === 1 ? 'trade' : 'trades';
   }
 
-  function syncStartInput() {
+    function syncStartInput() {
     const v = settings.display === 'USC' ? settings.startUSD * 100 : settings.startUSD;
     startInput.value = v ? Math.round(v * 100) / 100 : '';
+  }
+
+  /* ---------- Profit calendar ---------- */
+  const calGrid = $('#calGrid');
+  const calDay = $('#calDay');
+  const nowDate = new Date();
+  let calMonth = { y: nowDate.getFullYear(), m: nowDate.getMonth() };
+  let calSelected = null;
+
+  const compact = new Intl.NumberFormat(undefined, { notation: 'compact', maximumFractionDigits: 1 });
+  const round2 = (n) => Math.round(n * 100) / 100;
+  const signClass = (usd) => { const v = round2(usd); return v > 0 ? 'profit' : v < 0 ? 'loss' : 'be'; };
+
+  function cellMoney(usd) {
+    const v = round2(settings.display === 'USC' ? usd * 100 : usd);
+    if (v === 0) return '0';
+    return (v > 0 ? '+' : '\u2212') + compact.format(Math.abs(v));
+  }
+
+  function renderCalendar() {
+    const { y, m } = calMonth;
+    const first = new Date(y, m, 1);
+    $('#calMonth').textContent = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+    $('#calNext').disabled = y * 12 + m >= nowDate.getFullYear() * 12 + nowDate.getMonth();
+
+    const prefix = `${y}-${pad2(m + 1)}-`;
+    const days = {};
+    let monthUSD = 0;
+    let monthN = 0;
+    entries.forEach((e) => {
+      if (!e.date.startsWith(prefix)) return;
+      const day = days[e.date] || (days[e.date] = { usd: 0, list: [] });
+      day.usd += toUSD(e);
+      day.list.push(e);
+      monthUSD += toUSD(e);
+      monthN++;
+    });
+
+    const totalEl = $('#calTotal');
+    totalEl.textContent = monthN ? `${money(monthUSD, true)} \u00b7 ${countLabel(monthN)}` : 'No trades';
+    totalEl.className = 'cal-total' + (monthN ? ' ' + signClass(monthUSD) : '');
+
+    const todayKey = ymd(new Date());
+    const cells = [];
+    const offset = (first.getDay() + 6) % 7; // week starts on Monday
+    for (let i = 0; i < offset; i++) cells.push(el('div', 'cal-cell empty'));
+
+    const dim = new Date(y, m + 1, 0).getDate();
+    for (let d = 1; d <= dim; d++) {
+      const dateStr = prefix + pad2(d);
+      const info = days[dateStr];
+      const isToday = dateStr === todayKey;
+
+      if (!info) {
+        const cell = el('div', 'cal-cell' + (isToday ? ' today' : ''));
+        cell.append(el('span', 'cal-num', d));
+        cells.push(cell);
+        continue;
+      }
+
+      const cell = el('button', `cal-cell has ${signClass(info.usd)}` + (isToday ? ' today' : ''));
+      cell.type = 'button';
+      cell.setAttribute('aria-pressed', String(calSelected === dateStr));
+      cell.setAttribute('aria-label', `${fmtDate(dateStr)}: ${money(info.usd, true)}, ${countLabel(info.list.length)}`);
+      cell.append(el('span', 'cal-num', d), el('span', 'cal-amt', cellMoney(info.usd)));
+      cell.addEventListener('click', () => {
+        calSelected = calSelected === dateStr ? null : dateStr;
+        renderCalendar();
+      });
+      cells.push(cell);
+    }
+    calGrid.replaceChildren(...cells);
+
+    const sel = calSelected && days[calSelected];
+    calDay.hidden = !sel;
+    if (sel) {
+      const head = el('h3', '', `${fmtDate(calSelected)} \u00b7 ${money(sel.usd, true)}`);
+      const rows = sel.list
+        .slice()
+        .sort((a, b) => a.createdAt - b.createdAt)
+        .map((e) => {
+          const row = el('button', 'cal-trade');
+          row.type = 'button';
+          const left = el('span', 'cal-trade-left');
+          left.append(el('span', 'pair', e.pair), el('span', `side ${e.side}`, e.side === 'buy' ? 'Buy' : 'Sell'));
+          row.append(left, el('span', `amount ${e.result}`, fmtResult(e)));
+          row.addEventListener('click', () => openDetail(e));
+          return row;
+        });
+      calDay.replaceChildren(head, ...rows);
+    }
+  }
+
+  function shiftMonth(n) {
+    const d = new Date(calMonth.y, calMonth.m + n, 1);
+    calMonth = { y: d.getFullYear(), m: d.getMonth() };
+    calSelected = null;
+    renderCalendar();
   }
 
   /* ---------- Image handling ---------- */
@@ -501,30 +516,11 @@
     });
   });
 
-  chart.addEventListener('pointermove', (ev) => {
-    if (!chartGeo) return;
-    const rect = chart.getBoundingClientRect();
-    const px = ((ev.clientX - rect.left) / rect.width) * chartGeo.W;
-    const ratio = (px - chartGeo.padX) / (chartGeo.W - 2 * chartGeo.padX);
-    const i = Math.max(0, Math.min(chartGeo.n - 1, Math.round(ratio * (chartGeo.n - 1))));
-    const cx = chartGeo.x(i);
-    markerLine.setAttribute('x1', cx);
-    markerLine.setAttribute('x2', cx);
-    markerDot.setAttribute('cx', cx);
-    markerDot.setAttribute('cy', chartGeo.y(chartPoints[i].value));
-    markerLine.setAttribute('visibility', 'visible');
-    markerDot.setAttribute('visibility', 'visible');
-    setReadout(i);
-  });
-
-  chart.addEventListener('pointerleave', () => {
-    if (!markerLine) return;
-    markerLine.setAttribute('visibility', 'hidden');
-    markerDot.setAttribute('visibility', 'hidden');
-    setReadout(null);
-  });
-
   syncStartInput();
+
+  /* ---------- Calendar events ---------- */
+  $('#calPrev').addEventListener('click', () => shiftMonth(-1));
+  $('#calNext').addEventListener('click', () => shiftMonth(1));
 
   /* ---------- Theme ---------- */
   const themeBtn = $('#themeToggle');

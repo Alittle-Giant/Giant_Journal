@@ -65,8 +65,6 @@
       </nav>
 
       <p id="rangeLabel" class="range-label"></p>
-      <p id="chartReadout" class="readout" aria-live="polite"></p>
-      <svg id="chart" class="chart" viewBox="0 0 600 240" role="img" aria-label="Balance over the selected period"></svg>
 
       <div class="period-summary">
         <div class="tile profit">
@@ -85,6 +83,22 @@
           <span id="sumBeCount" class="tile-sub">trades</span>
         </div>
       </div>
+    </section>
+
+    <section class="panel" aria-label="Profit calendar">
+      <div class="cal-head">
+        <button id="calPrev" class="btn ghost small" type="button" aria-label="Previous month">&#8249;</button>
+        <div class="cal-title">
+          <strong id="calMonth"></strong>
+          <span id="calTotal" class="cal-total"></span>
+        </div>
+        <button id="calNext" class="btn ghost small" type="button" aria-label="Next month">&#8250;</button>
+      </div>
+      <div class="cal-grid cal-dow" aria-hidden="true">
+        <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+      </div>
+      <div id="calGrid" class="cal-grid"></div>
+      <div id="calDay" class="cal-day" hidden></div>
     </section>
 
     <nav class="filters" aria-label="Filter trades">
