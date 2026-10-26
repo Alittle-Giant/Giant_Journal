@@ -473,6 +473,8 @@ input:disabled { opacity: 0.5; }
 .cal-cell.be { border-color: var(--be); }
 
 .cal-num { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+.cal-val { display: flex; flex-direction: column; min-width: 0; }
+.cal-unit { font-size: 0.62rem; font-weight: 700; line-height: 1.1; color: var(--muted); }
 .cal-amt { font-size: 0.82rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cal-cell.profit .cal-amt { color: var(--profit); }
 .cal-cell.loss .cal-amt { color: var(--loss); }
@@ -508,4 +510,5 @@ input:disabled { opacity: 0.5; }
   .cal-cell { padding: 0.15rem 0.2rem; border-radius: 8px; aspect-ratio: 1 / 1; }
   .cal-num { font-size: 0.66rem; }
   .cal-amt { font-size: 0.62rem; }
+  .cal-unit { font-size: 0.5rem; }
 }

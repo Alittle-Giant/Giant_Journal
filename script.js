@@ -313,7 +313,9 @@
       cell.type = 'button';
       cell.setAttribute('aria-pressed', String(calSelected === dateStr));
       cell.setAttribute('aria-label', `${fmtDate(dateStr)}: ${money(info.usd, true)}, ${countLabel(info.list.length)}`);
-      cell.append(el('span', 'cal-num', d), el('span', 'cal-amt', cellMoney(info.usd)));
+      const val = el('span', 'cal-val');
+      val.append(el('span', 'cal-amt', cellMoney(info.usd)), el('span', 'cal-unit', settings.display));
+      cell.append(el('span', 'cal-num', d), val);
       cell.addEventListener('click', () => {
         calSelected = calSelected === dateStr ? null : dateStr;
         renderCalendar();
