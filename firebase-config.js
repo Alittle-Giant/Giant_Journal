@@ -3,12 +3,12 @@
 
 // Firebase console -> Project settings -> General -> Your apps -> Web app -> Config
 export const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.firebasestorage.app",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyBZ84QQDWUsctsl4-jpYR8rstJdpCf0z1k",
+  authDomain: "journal-32194.firebaseapp.com",
+  projectId: "journal-32194",
+  storageBucket: "journal-32194.firebasestorage.app",
+  messagingSenderId: "905593217222",
+  appId: "1:905593217222:web:dd04596bb4a0b19c1937c7"
 };
 
 // Cloudinary console -> Settings -> Upload -> Upload presets (mode: Unsigned)
