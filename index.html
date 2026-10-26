@@ -15,15 +15,67 @@
 </head>
 <body>
 
+  <div id="boot" class="boot">Loading&hellip;</div>
+
+  <!-- Setup notice (shown until firebase-config.js is filled in) -->
+  <section id="setupScreen" class="auth" hidden>
+    <div class="auth-card">
+      <h1>Almost ready</h1>
+      <p class="auth-sub">Fill in <strong>firebase-config.js</strong> with your Firebase details, then reload this page. The steps are in <strong>SETUP.md</strong>.</p>
+    </div>
+  </section>
+
+  <!-- Login -->
+  <section id="authScreen" class="auth" hidden>
+    <div class="auth-card">
+      <img class="auth-logo" src="favicon.svg" alt="" width="48" height="48">
+      <h1>Trading Journal</h1>
+      <p id="authSub" class="auth-sub">Log in to see your journal.</p>
+
+      <div id="authTabs" class="seg auth-tabs" role="radiogroup" aria-label="Log in or sign up">
+        <label><input type="radio" name="authMode" value="login" checked><span>Log in</span></label>
+        <label><input type="radio" name="authMode" value="signup"><span>Sign up</span></label>
+      </div>
+
+      <form id="authForm" novalidate>
+        <div class="field">
+          <label for="authEmail">Email</label>
+          <input id="authEmail" type="email" autocomplete="email" inputmode="email" placeholder="you@example.com">
+        </div>
+        <div class="field">
+          <label for="authPassword">Password</label>
+          <input id="authPassword" type="password" autocomplete="current-password" placeholder="At least 6 characters">
+        </div>
+        <p id="authError" class="form-error" role="alert" hidden></p>
+        <p id="authInfo" class="auth-info" role="status" hidden></p>
+        <button id="authSubmit" class="btn primary wide" type="submit">Log in</button>
+      </form>
+
+      <button id="googleBtn" class="btn ghost wide" type="button" hidden>Continue with Google</button>
+      <button id="forgotBtn" class="linkbtn" type="button">Forgot password?</button>
+    </div>
+  </section>
+
+  <div id="app" hidden>
   <header class="topbar">
     <h1>Trading Journal</h1>
     <div class="topbar-actions">
+      <span id="userEmail" class="user-email"></span>
       <button id="themeToggle" class="btn ghost" type="button">Dark mode</button>
+      <button id="logoutBtn" class="btn ghost" type="button">Log out</button>
       <button id="newBtn" class="btn primary" type="button">New entry</button>
     </div>
   </header>
 
   <main>
+    <div id="syncError" class="notice error" role="alert" hidden></div>
+    <div id="migrate" class="notice" hidden>
+      <p id="migrateText"></p>
+      <div class="notice-actions">
+        <button id="migrateBtn" class="btn primary small" type="button">Upload to my account</button>
+        <button id="migrateSkip" class="btn ghost small" type="button">Not now</button>
+      </div>
+    </div>
     <section class="stats" aria-label="Summary">
       <div class="stat">
         <span class="stat-label">Trades</span>
@@ -115,6 +167,7 @@
       <p id="emptyText">Select New entry to log your first trade.</p>
     </div>
   </main>
+  </div>
 
   <!-- Entry form -->
   <dialog id="entryDialog" aria-labelledby="dialogTitle">
@@ -186,6 +239,6 @@
     <div id="detailBody"></div>
   </dialog>
 
-  <script src="script.js"></script>
+  <script type="module" src="script.js"></script>
 </body>
 </html>

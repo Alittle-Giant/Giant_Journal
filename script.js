@@ -1,37 +1,56 @@
+import * as cloud from './cloud.js';
+
 (() => {
   'use strict';
 
-  const ENTRIES_KEY = 'trading-journal:entries';
+  const ENTRIES_KEY = 'trading-journal:entries'; // old browser-only entries (one-time upload)
   const THEME_KEY = 'trading-journal:theme';
   const SETTINGS_KEY = 'trading-journal:settings';
 
-  /* ---------- Storage ----------
-     Everything goes through these two functions. To move to
-     Firebase + Cloudinary later, replace their bodies only. */
-  const store = {
-    load() {
-      try { return JSON.parse(localStorage.getItem(ENTRIES_KEY)) || []; }
-      catch { return []; }
-    },
-    save(list) {
-      try { localStorage.setItem(ENTRIES_KEY, JSON.stringify(list)); return true; }
-      catch { return false; }
-    },
-    loadSettings() {
+  const local = {
+    loadPrefs() {
       try { return JSON.parse(localStorage.getItem(SETTINGS_KEY)) || {}; }
       catch { return {}; }
     },
-    saveSettings(s) {
-      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch { /* ignore */ }
+    savePrefs(p) {
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(p)); } catch { /* ignore */ }
+    },
+    loadLegacyEntries() {
+      try {
+        const list = JSON.parse(localStorage.getItem(ENTRIES_KEY));
+        return Array.isArray(list) ? list : [];
+      } catch { return []; }
     }
   };
 
   /* ---------- State ---------- */
-  let entries = store.load();
+  let entries = [];
   let filter = 'all';
   let editingId = null;
-  let pendingImage = null;
-  let settings = Object.assign({ startUSD: 0, display: 'USD', period: 'month' }, store.loadSettings());
+  let pending = { url: null, blob: null };
+  let currentUser = null;
+  let stopWatching = null;
+
+  const savedPrefs = local.loadPrefs();
+  const legacyStartUSD = Number(savedPrefs.startUSD) || 0;
+  let settings = {
+    startUSD: 0,
+    display: savedPrefs.display === 'USC' ? 'USC' : 'USD',
+    period: ['week', 'month', 'lastmonth', '6m', '1y'].includes(savedPrefs.period) ? savedPrefs.period : 'month'
+  };
+
+  // display + period stay on this device; the starting balance lives in the database
+  function persistPrefs() {
+    local.savePrefs({ display: settings.display, period: settings.period, startUSD: legacyStartUSD });
+  }
+
+  let startTimer = null;
+  function persistStart() {
+    clearTimeout(startTimer);
+    startTimer = setTimeout(() => {
+      if (currentUser) cloud.saveStartUSD(currentUser.uid, settings.startUSD).catch(() => {});
+    }, 600);
+  }
 
   /* ---------- Elements ---------- */
   const $ = (sel) => document.querySelector(sel);
@@ -57,7 +76,38 @@
     return node;
   };
 
-  const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+  const withTimeout = (promise, ms = 20000) =>
+    Promise.race([promise, new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), ms))]);
+
+  function friendlyError(err) {
+    const code = (err && err.code) || '';
+    const msg = (err && err.message) || '';
+    if (msg === 'timeout') return 'This is taking too long. Check your internet and try again.';
+    if (code === 'permission-denied') return 'Permission denied. Check that the Firestore rules from SETUP.md are published.';
+    if (code === 'unavailable') return 'You seem to be offline. Try again when you have internet.';
+    return msg || 'Something went wrong. Please try again.';
+  }
+
+  function authMessage(err) {
+    switch (err && err.code) {
+      case 'auth/invalid-email': return 'That email address does not look right.';
+      case 'auth/missing-password': return 'Enter your password.';
+      case 'auth/weak-password': return 'Use a password with at least 6 characters.';
+      case 'auth/email-already-in-use': return 'An account with this email already exists. Try logging in.';
+      case 'auth/invalid-credential':
+      case 'auth/wrong-password':
+      case 'auth/user-not-found': return 'Wrong email or password.';
+      case 'auth/too-many-requests': return 'Too many tries. Wait a few minutes and try again.';
+      case 'auth/network-request-failed': return 'No internet connection.';
+      case 'auth/popup-closed-by-user':
+      case 'auth/cancelled-popup-request': return '';
+      case 'auth/operation-not-allowed': return 'This sign-in method is not turned on in Firebase yet.';
+      case 'auth/unauthorized-domain': return 'This website address is not allowed yet. Add it under Authentication, Settings, Authorized domains in Firebase.';
+      default: return 'Could not sign in. Please try again.';
+    }
+  }
 
   const todayStr = () => {
     const d = new Date();
@@ -357,7 +407,7 @@
   }
 
   /* ---------- Image handling ---------- */
-  function compressImage(file, maxWidth = 1280, quality = 0.8) {
+  function compressImage(file, maxWidth = 1600, quality = 0.82) {
     return new Promise((resolve, reject) => {
       const url = URL.createObjectURL(file);
       const img = new Image();
@@ -368,18 +418,28 @@
         canvas.height = Math.round(img.height * scale);
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
         URL.revokeObjectURL(url);
-        resolve(canvas.toDataURL('image/jpeg', quality));
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error('Could not process image'))),
+          'image/jpeg',
+          quality
+        );
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not read image')); };
       img.src = url;
     });
   }
 
-  function showPreview(src) {
-    pendingImage = src || null;
+  // src = picture to show, blob = a new picture that still has to be uploaded
+  function showPreview(src, blob = null) {
+    if (shotPreview.dataset.blobUrl) URL.revokeObjectURL(shotPreview.dataset.blobUrl);
+    delete shotPreview.dataset.blobUrl;
+    pending = { url: blob ? null : (src || null), blob };
     shotPreview.hidden = !src;
     shotRemove.hidden = !src;
-    if (src) shotPreview.src = src;
+    if (src) {
+      shotPreview.src = src;
+      if (blob) shotPreview.dataset.blobUrl = src;
+    }
   }
 
   /* ---------- Dialog ---------- */
@@ -416,12 +476,14 @@
     form.elements.pair.focus();
   }
 
-  function removeEntry(entry) {
+  async function removeEntry(entry) {
     if (!confirm(`Delete the ${entry.pair} entry? This cannot be undone.`)) return;
-    entries = entries.filter((e) => e.id !== entry.id);
-    store.save(entries);
-    detail.close();
-    render();
+    try {
+      await withTimeout(cloud.deleteEntry(currentUser.uid, entry.id));
+      detail.close();
+    } catch (err) {
+      alert(friendlyError(err));
+    }
   }
 
   /* ---------- Events ---------- */
@@ -444,13 +506,14 @@
     if (!file) return;
     try {
       setError('');
-      showPreview(await compressImage(file));
+      const blob = await compressImage(file);
+      showPreview(URL.createObjectURL(blob), blob);
     } catch {
       setError('That file could not be read as an image. Choose a PNG or JPG.');
     }
   });
 
-  form.addEventListener('submit', (ev) => {
+  form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const pair = form.elements.pair.value.trim().toUpperCase();
     const result = form.elements.result.value;
@@ -458,32 +521,38 @@
 
     if (!pair) return setError('Enter the pair, for example XAUUSD.');
     if (result !== 'be' && !(amount > 0)) return setError('Enter an amount greater than 0.');
+    if (!currentUser) return setError('You are logged out. Log in again.');
 
-    const existing = entries.find((e) => e.id === editingId);
-    const entry = {
-      id: existing ? existing.id : uid(),
-      createdAt: existing ? existing.createdAt : Date.now(),
-      pair,
-      side: form.elements.side.value,
-      currency: form.elements.currency.value,
-      result,
-      amount,
-      date: form.elements.date.value || todayStr(),
-      image: pendingImage
-    };
+    const saveBtn = $('#saveBtn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving\u2026';
+    setError('');
 
-    const previous = entries;
-    entries = existing
-      ? entries.map((e) => (e.id === entry.id ? entry : e))
-      : [...entries, entry];
+    try {
+      let image = pending.url;
+      if (pending.blob) image = await withTimeout(cloud.uploadImage(currentUser.uid, pending.blob), 60000);
 
-    if (!store.save(entries)) {
-      entries = previous;
-      return setError('Storage is full. Delete old entries or use a smaller screenshot.');
+      const existing = entries.find((e) => e.id === editingId);
+      const entry = {
+        id: existing ? existing.id : newId(),
+        createdAt: existing ? existing.createdAt : Date.now(),
+        pair,
+        side: form.elements.side.value,
+        currency: form.elements.currency.value,
+        result,
+        amount,
+        date: form.elements.date.value || todayStr(),
+        image: image || null
+      };
+
+      await withTimeout(cloud.saveEntry(currentUser.uid, entry));
+      dialog.close();
+    } catch (err) {
+      setError(friendlyError(err));
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = editingId ? 'Save changes' : 'Save entry';
     }
-
-    dialog.close();
-    render();
   });
 
   document.querySelectorAll('.filters .chip').forEach((chip) => {
@@ -499,7 +568,7 @@
     r.checked = r.value === settings.display;
     r.addEventListener('change', () => {
       settings.display = r.value;
-      store.saveSettings(settings);
+      persistPrefs();
       syncStartInput();
       renderStats();
     });
@@ -509,7 +578,7 @@
     const v = Number(startInput.value);
     const val = Number.isFinite(v) && v > 0 ? v : 0;
     settings.startUSD = settings.display === 'USC' ? val / 100 : val;
-    store.saveSettings(settings);
+    persistStart();
     renderStats();
   });
 
@@ -517,7 +586,7 @@
     chip.classList.toggle('active', chip.dataset.period === settings.period);
     chip.addEventListener('click', () => {
       settings.period = chip.dataset.period;
-      store.saveSettings(settings);
+      persistPrefs();
       document.querySelectorAll('.periods .chip').forEach((c) => c.classList.toggle('active', c === chip));
       renderBalance();
     });
@@ -547,6 +616,188 @@
     try { localStorage.setItem(THEME_KEY, next); } catch { /* ignore */ }
   });
 
-  /* ---------- Start ---------- */
-  render();
+  /* ---------- Login & start ---------- */
+  const bootEl = $('#boot');
+  const appEl = $('#app');
+  const authScreen = $('#authScreen');
+  const setupScreen = $('#setupScreen');
+  const authForm = $('#authForm');
+  const authErrorEl = $('#authError');
+  const authInfoEl = $('#authInfo');
+  const syncErrorEl = $('#syncError');
+  const migrateBox = $('#migrate');
+  const migrateText = $('#migrateText');
+  const migrateBtn = $('#migrateBtn');
+
+  function showOnly(which) {
+    bootEl.hidden = which !== 'boot';
+    appEl.hidden = which !== 'app';
+    authScreen.hidden = which !== 'auth';
+    setupScreen.hidden = which !== 'setup';
+  }
+
+  function setAuthMsg(error, info) {
+    authErrorEl.textContent = error || '';
+    authErrorEl.hidden = !error;
+    authInfoEl.textContent = info || '';
+    authInfoEl.hidden = !info;
+  }
+
+  let authMode = 'login';
+  function setAuthMode(mode) {
+    authMode = mode;
+    const signup = mode === 'signup';
+    $('#authSubmit').textContent = signup ? 'Create account' : 'Log in';
+    $('#authSub').textContent = signup
+      ? 'Create an account. Your journal is private to you.'
+      : 'Log in to see your journal.';
+    $('#authPassword').autocomplete = signup ? 'new-password' : 'current-password';
+    $('#forgotBtn').hidden = signup;
+    setAuthMsg('', '');
+  }
+
+  document.querySelectorAll('input[name="authMode"]').forEach((r) =>
+    r.addEventListener('change', () => setAuthMode(r.value))
+  );
+  $('#authTabs').hidden = !cloud.allowSignup;
+  $('#googleBtn').hidden = !cloud.googleSignIn;
+
+  authForm.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const email = $('#authEmail').value.trim();
+    const password = $('#authPassword').value;
+    setAuthMsg('', '');
+    if (!email || !password) return setAuthMsg('Enter your email and password.', '');
+
+    const btn = $('#authSubmit');
+    btn.disabled = true;
+    try {
+      if (authMode === 'signup' && cloud.allowSignup) await cloud.signUp(email, password);
+      else await cloud.logIn(email, password);
+    } catch (err) {
+      setAuthMsg(authMessage(err), '');
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $('#googleBtn').addEventListener('click', async () => {
+    setAuthMsg('', '');
+    try { await cloud.logInGoogle(); }
+    catch (err) { setAuthMsg(authMessage(err), ''); }
+  });
+
+  $('#forgotBtn').addEventListener('click', async () => {
+    const email = $('#authEmail').value.trim();
+    if (!email) return setAuthMsg('Type your email above first, then tap Forgot password.', '');
+    try {
+      await cloud.resetPassword(email);
+      setAuthMsg('', 'If an account exists for that email, a reset link was sent. Check your inbox and spam.');
+    } catch (err) {
+      setAuthMsg(authMessage(err), '');
+    }
+  });
+
+  $('#logoutBtn').addEventListener('click', () => { cloud.logOut(); });
+
+  /* One-time upload of the entries that were saved in this browser before login existed */
+  let legacy = [];
+  const migratedKey = () => `trading-journal:migrated:${currentUser.uid}`;
+
+  function checkLegacy() {
+    legacy = local.loadLegacyEntries();
+    let done = null;
+    try { done = localStorage.getItem(migratedKey()); } catch { /* ignore */ }
+    const show = legacy.length > 0 && !done;
+    migrateBox.hidden = !show;
+    migrateBtn.disabled = false;
+    if (show) {
+      const n = legacy.length;
+      migrateText.textContent =
+        `Found ${n} ${n === 1 ? 'entry' : 'entries'} saved in this browser from before. Upload ${n === 1 ? 'it' : 'them'} to your account?`;
+    }
+  }
+
+  migrateBtn.addEventListener('click', async () => {
+    migrateBtn.disabled = true;
+    let done = 0;
+    let failed = 0;
+    for (const old of legacy) {
+      migrateText.textContent = `Uploading ${done + failed + 1} of ${legacy.length}\u2026`;
+      try {
+        let image = old.image || null;
+        if (image && image.startsWith('data:')) {
+          const blob = await (await fetch(image)).blob();
+          image = await withTimeout(cloud.uploadImage(currentUser.uid, blob), 60000);
+        }
+        await withTimeout(cloud.saveEntry(currentUser.uid, { ...old, image }), 30000);
+        done++;
+      } catch {
+        failed++;
+      }
+    }
+    if (!failed) {
+      if (legacyStartUSD > 0 && !settings.startUSD) {
+        settings.startUSD = legacyStartUSD;
+        cloud.saveStartUSD(currentUser.uid, legacyStartUSD).catch(() => {});
+        syncStartInput();
+        renderStats();
+      }
+      try { localStorage.setItem(migratedKey(), '1'); } catch { /* ignore */ }
+      migrateBox.hidden = true;
+    } else {
+      migrateText.textContent = `${done} uploaded, ${failed} failed. Check your internet and try again.`;
+      migrateBtn.disabled = false;
+    }
+  });
+
+  $('#migrateSkip').addEventListener('click', () => { migrateBox.hidden = true; });
+
+  /* Who is logged in decides what the page shows */
+  async function onUserChange(user) {
+    if (stopWatching) { stopWatching(); stopWatching = null; }
+    currentUser = user;
+    entries = [];
+    syncErrorEl.hidden = true;
+    migrateBox.hidden = true;
+
+    if (!user) {
+      $('#authPassword').value = '';
+      setAuthMode('login');
+      document.querySelector('input[name="authMode"][value="login"]').checked = true;
+      showOnly('auth');
+      render();
+      return;
+    }
+
+    $('#userEmail').textContent = user.email || '';
+    showOnly('app');
+    settings.startUSD = 0;
+    syncStartInput();
+    render();
+
+    try {
+      const start = await cloud.loadStartUSD(user.uid);
+      if (currentUser !== user) return;
+      settings.startUSD = start;
+      syncStartInput();
+      renderStats();
+    } catch (err) {
+      console.error(err);
+    }
+
+    stopWatching = cloud.watchEntries(
+      user.uid,
+      (list) => { entries = list; syncErrorEl.hidden = true; render(); },
+      (err) => {
+        console.error(err);
+        syncErrorEl.textContent = `Could not load your entries. ${friendlyError(err)}`;
+        syncErrorEl.hidden = false;
+      }
+    );
+    checkLegacy();
+  }
+
+  if (!cloud.isConfigured) showOnly('setup');
+  else cloud.onUser(onUserChange);
 })();
