@@ -473,6 +473,18 @@ input:disabled { opacity: 0.5; }
 .cal-cell.be { border-color: var(--be); }
 
 .cal-num { font-size: 0.78rem; font-weight: 700; color: var(--ink); }
+.cal-top { display: flex; align-items: center; justify-content: space-between; gap: 0.2rem; }
+.cal-count {
+  padding: 0 0.4rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  white-space: nowrap;
+}
 .cal-val { display: flex; flex-direction: column; min-width: 0; }
 .cal-unit { font-size: 0.62rem; font-weight: 700; line-height: 1.1; color: var(--muted); }
 .cal-amt { font-size: 0.82rem; font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -511,4 +523,6 @@ input:disabled { opacity: 0.5; }
   .cal-num { font-size: 0.66rem; }
   .cal-amt { font-size: 0.62rem; }
   .cal-unit { font-size: 0.5rem; }
+  .cal-word { display: none; }
+  .cal-count { padding: 0 0.28rem; font-size: 0.58rem; }
 }

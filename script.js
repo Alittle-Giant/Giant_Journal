@@ -315,7 +315,12 @@
       cell.setAttribute('aria-label', `${fmtDate(dateStr)}: ${money(info.usd, true)}, ${countLabel(info.list.length)}`);
       const val = el('span', 'cal-val');
       val.append(el('span', 'cal-amt', cellMoney(info.usd)), el('span', 'cal-unit', settings.display));
-      cell.append(el('span', 'cal-num', d), val);
+      const n = info.list.length;
+      const count = el('span', 'cal-count');
+      count.append(String(n), el('span', 'cal-word', n === 1 ? ' trade' : ' trades'));
+      const top = el('span', 'cal-top');
+      top.append(el('span', 'cal-num', d), count);
+      cell.append(top, val);
       cell.addEventListener('click', () => {
         calSelected = calSelected === dateStr ? null : dateStr;
         renderCalendar();
